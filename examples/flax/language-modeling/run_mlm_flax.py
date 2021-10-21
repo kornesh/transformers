@@ -34,6 +34,31 @@ import numpy as np
 from datasets import load_dataset
 from tqdm import tqdm
 
+import os
+
+# From https://github.com/google/jax/blob/main/jax/tools/colab_tpu.py
+tpu_address = None
+for k in ['COLAB_TPU_ADDR', 'TPU_NAME']:
+    if k in os.environ:
+        tpu_address = os.environ[k]
+        print("Found TPU on env", k)
+        break
+
+if tpu_address:
+  import requests
+  if 'TPU_DRIVER_MODE' not in globals():
+    url = 'http:' + tpu_address.split(':')[1] + ':8475/requestversion/tpu_driver_nightly'
+    resp = requests.post(url)
+    TPU_DRIVER_MODE = 1
+
+
+  from jax.config import config
+  config.FLAGS.jax_xla_backend = "tpu_driver"
+  config.FLAGS.jax_backend_target = tpu_address
+  print('Registered TPU:', config.FLAGS.jax_backend_target)
+else:
+  print('No TPU detected. Can be changed under "Runtime/Change runtime type".')
+
 import flax
 import jax
 import jax.numpy as jnp
@@ -503,6 +528,7 @@ if __name__ == "__main__":
 
     # Initialize our training
     rng = jax.random.PRNGKey(training_args.seed)
+    
     dropout_rngs = jax.random.split(rng, jax.local_device_count())
 
     if model_args.model_name_or_path:
@@ -513,7 +539,8 @@ if __name__ == "__main__":
         model = FlaxAutoModelForMaskedLM.from_config(
             config, seed=training_args.seed, dtype=getattr(jnp, model_args.dtype)
         )
-
+    
+    print(jax.devices())
     # Store some constant
     num_epochs = int(training_args.num_train_epochs)
     train_batch_size = int(training_args.per_device_train_batch_size) * jax.device_count()
