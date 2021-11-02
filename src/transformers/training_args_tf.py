@@ -201,42 +201,16 @@ class TFTrainingArguments(TrainingArguments):
             policy = tf.keras.mixed_precision.experimental.Policy("mixed_float16")
             tf.keras.mixed_precision.experimental.set_policy(policy)
 
-        if self.no_cuda:
-            strategy = tf.distribute.OneDeviceStrategy(device="/cpu:0")
-        else:
-            try:
-                if self.tpu_name:
-                    tpu = tf.distribute.cluster_resolver.TPUClusterResolver(
-                        self.tpu_name, zone=self.tpu_zone, project=self.gcp_project
-                    )
-                else:
-                    tpu = tf.distribute.cluster_resolver.TPUClusterResolver()
-            except ValueError:
-                if self.tpu_name:
-                    raise RuntimeError(f"Couldn't connect to TPU {self.tpu_name}!")
-                else:
-                    tpu = None
-
-            if tpu:
-                # Set to bfloat16 in case of TPU
-                if self.fp16:
-                    policy = tf.keras.mixed_precision.experimental.Policy("mixed_bfloat16")
-                    tf.keras.mixed_precision.experimental.set_policy(policy)
-
-                tf.config.experimental_connect_to_cluster(tpu)
-                tf.tpu.experimental.initialize_tpu_system(tpu)
-
-                strategy = tf.distribute.TPUStrategy(tpu)
-
-            elif len(gpus) == 0:
-                strategy = tf.distribute.OneDeviceStrategy(device="/cpu:0")
-            elif len(gpus) == 1:
-                strategy = tf.distribute.OneDeviceStrategy(device="/gpu:0")
-            elif len(gpus) > 1:
-                # If you only want to use a specific subset of GPUs use `CUDA_VISIBLE_DEVICES=0`
-                strategy = tf.distribute.MirroredStrategy()
-            else:
-                raise ValueError("Cannot find the proper strategy, please check your environment properties.")
+        try:
+            cluster_resolver = tf.distribute.cluster_resolver.TPUClusterResolver(tpu='local')
+            tf.tpu.experimental.initialize_tpu_system(cluster_resolver)
+            strategy = tf.distribute.TPUStrategy(cluster_resolver)
+            print('Using local TPU VM')
+        except ValueError as e:
+            print(e)
+            print('No TPU detected')
+            tpu = None
+            strategy = tf.distribute.get_strategy()
 
         return strategy
 
